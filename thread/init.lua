@@ -1,4 +1,10 @@
-local port = ...
+local args = ...
+
+local port = tonumber(args["--port"])
+if type(port) ~= "number" or 1023 > port or port > 65535 then
+  port = 53135
+  print("Game server using default port: 53135")
+end
 
 require("libs.mintmousse")
 

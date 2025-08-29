@@ -1,14 +1,23 @@
 local love = love
 local le, ltr = love.event, love.timer
 
+local args = require("util.args")
+require("util.logging")
+
+local mintMoussePort = tonumber(args["--mmport"]) or 80
+local mintMousseWhitelist = { "127.0.0.1", "192.168.0.0/16" }
+if type(args["--mmwhitelist"]) == "table" and #args["--mmwhitelist"] >= 1 then
+  mintMousseWhitelist = args["--mmwhitelist"]
+end
+
 require("libs.mintmousse")
+love.logging.info("Starting MintMousse on port", mintMoussePort)
+love.logging.info("MintMousse whitelist set to:", table.concat(mintMousseWhitelist, " & "))
 love.mintmousse.start({
   title = "Love Jam 2025 B side",
-  httpPort = 80,
-  whitelist = { "127.0.0.1", "192.168.0.0/16" },
+  httpPort = mintMoussePort,
+  whitelist = mintMousseWhitelist,
 })
-
-local args = require("util.args")
 
 local processEvents = function()
   le.pump()
@@ -36,6 +45,7 @@ local manualGC = function(timeBudget, safetyNetMB)
   end
 end
 
+love.logging.info("Creating server thread")
 local channel = love.thread.getChannel("channel")
 local thread = love.thread.newThread("thread/init.lua")
 
@@ -43,6 +53,7 @@ love.run = function()
   local loop = function()
     local quit = processEvents()
     if quit then
+      love.logging.info("Exiting...")
       return quit
     end
 
@@ -50,12 +61,8 @@ love.run = function()
     ltr.sleep(0.050) -- 50ms, server main thread can mostly sleep and process SDL events
   end
 
-  local port = tonumber(args["port"])
-  if port == nil then
-    port = 53135
-  end
-
-  thread:start(port)
+  love.logging.info("Starting server thread")
+  thread:start(args)
 
   return loop
 end
@@ -63,8 +70,12 @@ end
 love.quit = function()
   if thread:isRunning() then
     channel:push("quit")
+    love.logging.info("Waiting for server thread to rejoin main thread")
     thread:wait()
+    love.logging.info("Server thread has rejoined")
   end
+  love.logging.info("Telling MintMousse to stop")
   love.mintmousse.stop()
+  love.logging.info("MintMousse has stopped.")
   return false -- exit love
 end
