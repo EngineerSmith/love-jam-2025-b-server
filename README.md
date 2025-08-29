@@ -1,6 +1,8 @@
 # love-jam-2025-b-server
 The server that handles the game for https://github.com/EngineerSmith/love-jam-2025-b
 
+This was tested ONLY on Windows 10. Some net code may not work on linux/macos
+
 # Args
 | Arg | default | description |
 | --- | --- | --- |
