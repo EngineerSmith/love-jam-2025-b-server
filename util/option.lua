@@ -1,7 +1,7 @@
 return {
   validateUsername = function(username)
     -- Verifies that the username conforms to the length required
-    if #username < 3 or #username > 32 then
+    if #username < 3 or #username > 24 then
       return false
     end
 
