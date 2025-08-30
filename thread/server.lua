@@ -2,7 +2,7 @@ local enet = require("enet")
 
 local serialize = require("util.serialize")
 
-local ld = love.data
+local ld, ltr = love.data, love.timer
 
 local options = require("util.option")
 local enum = require("util.enum")
@@ -35,7 +35,7 @@ server.process = function(budgetEndTime)
     local client = server.getClient(sessionID)
 
     if event.type == "receive" then
-      local success, encoded = pcall(ld.compress, "data", options.compressionFunction, event.data)
+      local success, encoded = pcall(ld.decompress, "data", options.compressionFunction, event.data)
       if not success then
         if client.loggedIn then
           love.logging.info("Server Process: Could not decompress incoing data from", client.username)
@@ -48,9 +48,9 @@ server.process = function(budgetEndTime)
       if client.loggedIn then
         POST(enum.packetType.receive, client, encoded)
       else
-        local success = validLogin(client, encoded)
+        local success = server.validLogin(client, encoded)
         if not success then
-          removeClient(sessionID)
+          server.removeClient(sessionID)
           client.peer:disconnect_now(enum.disconnect.badlogin)
           goto continue
         end
@@ -61,7 +61,7 @@ server.process = function(budgetEndTime)
         })
       end
     elseif event.type == "disconnect" then
-      removeClient(sessionID)
+      server.removeClient(sessionID)
       if client.loggedIn then
         POST(enum.packetType.disconnect, client)
       end
@@ -118,7 +118,7 @@ server.processOutgoing = function()
           end
         end
       else
-        local client = getClient(target, false)
+        local client = server.getClient(target, false)
         if not client then
           love.logging.warn("Server outgoing: Network target is not valid:", tostring(target))
           goto continue
@@ -160,12 +160,12 @@ server.getClient = function(sessionID, makeNew)
     makeNew = true
   end
   local client = server.clients[sessionID] or (makeNew and { } or nil)
-  clients[sessionID] = client
+  server.clients[sessionID] = client
   return client
 end
 
 server.removeClient = function(sessionID)
-  clients[sessionID] = nil
+  server.clients[sessionID] = nil
 end
 
 server.validLogin = function(client, encoded)
@@ -176,7 +176,7 @@ server.validLogin = function(client, encoded)
   end
   -- USERNAME
   client.username = decoded[1]
-  if type(client.username) ~= "string" or  #client.username == 0 or client.username == "server" or options.validateUsername(client.username) then
+  if type(client.username) ~= "string" or #client.username == 0 or client.username == "server" or not options.validateUsername(client.username) then
     love.logging.info("LOGIN: Invalid username")
     return false
   end
