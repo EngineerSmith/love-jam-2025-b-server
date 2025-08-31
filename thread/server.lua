@@ -195,4 +195,15 @@ server.getPlayerCount = function()
   return count
 end
 
+server.getPlayerNameList = function()
+  local playerNames = { }
+  for _, client in pairs(server.clients) do
+    if client.loggedIn then
+      table.insert(playerNames, client.username)
+    end
+  end
+  table.sort(playerNames)
+  return table.concat(playerNames, "\n")
+end
+
 return server
