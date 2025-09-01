@@ -105,6 +105,18 @@ end
 
 -- network handlers
 local rooms = { }
+room.getNumberOfRooms = function()
+  return #rooms
+end
+
+room.getRoomsInfo = function()
+  local info = {}
+  for _, room in ipairs(rooms) do
+    local name = room.uuid:sub(1, 5)
+    table.insert(info, name..": "..#room.players.."/"..room.maxPlayers.." Players")
+  end
+  return table.concat(info, "\n\n")
+end
 
 local findClientRoom = function(client)
   for _, room in ipairs(rooms) do

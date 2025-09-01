@@ -33,6 +33,9 @@ server.process = function(budgetEndTime)
   while event and ltr.getTime() < budgetEndTime do
     local sessionID = ld.hash("string", "sha256", tostring(event.peer))
     local client = server.getClient(sessionID)
+    if not client.peer then
+      client.peer = event.peer
+    end
 
     if event.type == "receive" then
       local success, encoded = pcall(ld.decompress, "data", options.compressionFunction, event.data)
@@ -41,7 +44,7 @@ server.process = function(budgetEndTime)
           love.logging.info("Server Process: Could not decompress incoing data from", client.username)
         else
           removeClient(sessionID)
-          client.peer:disconnect_now(enum.disconnect.badlogin)
+          client.peer:disconnect(enum.disconnect.badlogin)
         end
         goto continue
       end
@@ -51,7 +54,7 @@ server.process = function(budgetEndTime)
         local success = server.validLogin(client, encoded)
         if not success then
           server.removeClient(sessionID)
-          client.peer:disconnect_now(enum.disconnect.badlogin)
+          client.peer:disconnect(enum.disconnect.badlogin)
           goto continue
         end
         POST(enum.packetType.login, client)
@@ -66,7 +69,6 @@ server.process = function(budgetEndTime)
         POST(enum.packetType.disconnect, client)
       end
     elseif event.type == "connect" then
-      client.peer = event.peer
       client.sessionID = sessionID
       client.loggedIn = false
     end
@@ -80,12 +82,40 @@ server.sendTo = function(client, type_, ...)
 end
 
 server.processOutgoing = function()
+  local tempQueue = { }
   local command = channelOut:pop()
   while command do
     if type(command) ~= "table" then
       love.logging.warning("Server Outgoing: Tried to process command that isn't type table. Type:", type(command), (type(command) == "string") and ". Value:"..command or "")
     else
       local target = command[1]
+
+      if target == "retry" then
+        local target = command[2]
+
+        local client = server.getClient(target, false)
+        if not client then
+          -- assume client disconnected, remove from queue
+          goto continue
+        end
+
+        if client.peer and client.peer:state() == "connected" then
+          local compressData = command[3]
+          local channel = command[4]
+          local flags = command[5]
+
+          client.peer:send(compressData:getPointer(), compressData:getSize(), channel, flags)
+        else
+          command.retry = command.retry + 1
+          if command.retry > 10 then
+            love.logging.warn("Peer wasn't ready after 10 retries, disregarding packet.")
+            goto continue
+          end
+          table.insert(tempQueue, command) 
+        end
+        goto continue
+      end
+
       local data = command[2]
       local channel = enum.channel.default
       local flags = "reliable"
@@ -132,12 +162,28 @@ server.processOutgoing = function()
           client.peer:disconnect(reason)
           goto continue
         end
-
-        client.peer:send(compressData:getPointer(), compressData:getSize(), channel, flags)
+        if client.peer and client.peer:state() == "connected" then
+          client.peer:send(compressData:getPointer(), compressData:getSize(), channel, flags)
+        else
+          command.retry = 1
+          command[1] = "retry"
+          command[2] = target
+          command[3] = compressData
+          command[4] = channel
+          command[5] = flags
+          table.insert(tempQueue, command) -- This does mean we waste resources compressing what isn't sent, and will continue to compress until it is sent
+        end
       end
       ::continue::
     end
     command = channelOut:pop()
+  end
+  if #tempQueue ~= 0 then
+    channelOut:performAtomic(function()
+      for _, command in ipairs(tempQueue) do
+        channelOut:push(command)
+      end
+    end)
   end
 end
 
@@ -149,12 +195,11 @@ server.stop = function()
   for _, client in pairs(clients) do
     if client.loggedIn then
       client.peer:disconnect(enum.disconnect.shutdown)
-    else
-      client.peer:disconnect_now(enum.disconnect.shutdown)
     end
   end
 
   server.clients = { }
+  server.host:flush()
   server.host:destroy()
   server.host = nil
 end
@@ -201,13 +246,18 @@ end
 
 server.getPlayerNameList = function()
   local playerNames = { }
-  for _, client in pairs(server.clients) do
-    if client.loggedIn then
+  for index, client in pairs(server.clients) do
+    if client.peer and client.peer:state() == "disconnected" then
+      server.clients[index] = nil
+      if client.loggedIn then
+        POST(enum.packetType.disconnect, client)
+      end
+    elseif client.loggedIn then
       table.insert(playerNames, client.username)
     end
   end
   table.sort(playerNames)
-  return table.concat(playerNames, "\n")
+  return table.concat(playerNames, "\n\n")
 end
 
 return server

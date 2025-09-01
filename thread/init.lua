@@ -36,16 +36,18 @@ local room = require("thread.room")
 -- MM
 love.mintmousse.updateSubscription("dashboard")
 local tab = love.mintmousse.newTab("Dashboard", "dashboard")
-local playerListCard = tab:newCard({ size = 1 })
-  :addCardHeader({ text = "Players", id = "playerListTitle" })
-  :newCardBody()
-    :addCardText({
-      id = "playerList",
-      text = "",
-    })
+local playerListAccordion = tab:newAccordion({ size = 2 })
+  :newContainer({ title = "Players", id = "playerListTitle" })
+    :addText({ text = "", id = "playerList" })
     .back
+  :newContainer({ title = "Rooms", id = "roomListTitle" })
+    :addText({ text = "", id = "roomList" })
+    .back
+
 local playerListTitle = love.mintmousse.get("playerListTitle")
 local playerListText = love.mintmousse.get("playerList")
+local roomListTitle = love.mintmousse.get("roomListTitle")
+local roomListText = love.mintmousse.get("roomList")
 --
 
 local port = tonumber(args["--port"])
@@ -94,7 +96,11 @@ POST = function(packetType, client, encodedData)
       return
     end
     for _, cb in ipairs(callbacks) do
-      cb(client, unpack(decoded, 1))
+      if decoded then
+        cb(client, unpack(decoded, 1))
+      else
+        cb(client)
+      end
     end
   end
 end
@@ -132,7 +138,10 @@ while true do
   end
   -- MintMousse
   if step % 20 == 0 then
-    playerListTitle.text = "Players - "..server.getPlayerCount()
+    playerListTitle.title = "Players - "..server.getPlayerCount()
     playerListText.text = server.getPlayerNameList()
+
+    roomListTitle.title = "Rooms - "..room.getNumberOfRooms()
+    roomListText.text = room.getRoomsInfo()
   end
 end
