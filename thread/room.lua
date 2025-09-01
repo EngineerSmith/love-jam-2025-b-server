@@ -8,7 +8,7 @@ local getNewKey = function()
   for attempt = 1, 10 do
     local key = ""
     for __ = 1, 4 do
-      key = key .. love.math.random(0, 9).tostring()
+      key = key .. tostring(love.math.random(0, 9))
     end
     if not keys[key] then
       keys[key] = true
@@ -35,12 +35,18 @@ room.new = function(owner)
     maxPlayers = 4,
     uuid = getUUID(),
   }, room)
-  self:addPlayer(owner)
+  love.logging.info("Room: Created new room:", self.uuid)
+  if not self:addPlayer(owner) then
+    error("You messed up, this should never fail")
+  end
   return self
 end
 
 room.addPlayer = function(self, client)
   if #self.players >= self.maxPlayers then
+    return false
+  end
+  if self.state ~= "waiting" then
     return false
   end
 
@@ -75,6 +81,7 @@ room.getInfo = function(self)
     owner = self.owner.uuid,
     players = { },
     maxPlayers = self.maxPlayers,
+    state = self.state,
   }
   for _, player in ipairs(self.players) do
     table.insert(info.players, {
@@ -113,24 +120,39 @@ local findClientRoom = function(client)
 end
 
 addHandler("createRoom", function(client)
+  do
+    local room = findClientRoom(client)
+    if room then
+      server.sendTo(client, "createRoom", false)
+      return
+    end
+  end
+
   local newRoom = room.new(client)
   if not newRoom then
-    server.sendTo(client, "createRoom", "failed")
+    server.sendTo(client, "createRoom", false)
   else
-    love.logging.info("Room: Created new room:", newRoom.uuid)
     table.insert(rooms, newRoom)
-    server.sendTo(client, "createRoom", "success", newRoom.key)
+    server.sendTo(client, "createRoom", true, newRoom:getInfo())
   end
 end)
 
 addHandler("joinRoom", function(client, roomKey)
+  do
+    local room = findClientRoom(client)
+    if room then
+      server.sendTo(client, "joinRoom", false)
+      return
+    end
+  end
+
   for _, room in ipairs(rooms) do
-    if room.state = "waiting" and room.key == roomKey then
+    if room.state == "waiting" and room.key == roomKey then
       if room:addPlayer(client) then
-        server.sendTo(client, "joinRoom", "success", room.key)
+        server.sendTo(client, "joinRoom", true, room:getInfo())
         -- todo tell new player about who is in the room
       else
-        server.sendTo(client, "joinRoom", "failed")
+        server.sendTo(client, "joinRoom", false)
       end
       return
     end

@@ -3,11 +3,15 @@ local args = ...
 local ltr = require("love.timer")
 require("love.data")
 require("love.event")
+require("love.math")
 
 require("libs.mintmousse")
 require("util.logging")
 
-require("love.math")
+local serialize = require("util.serialize")
+local enum = require("util.enum")
+
+--- GLOBALS
 local uuidRNG = love.math.newRandomGenerator(os.time())
 local uuidTemplate = "xxxxx-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
 getUUID = function()
@@ -15,6 +19,17 @@ getUUID = function()
     return ("%x"):format(uuidRNG:random(0, 0xf))
   end)
 end
+
+local handlers = { }
+addHandler = function(type_, cb)
+  if not handlers[type_] then
+    handlers[type_] = { cb }
+  else
+    table.insert(handlers[type_], cb)
+  end
+end
+
+---
 
 local room = require("thread.room")
 
@@ -52,28 +67,18 @@ local ACTIVE_TICK_DURATION = 1 / ACTIVE_TICK_RATE
 local IDLE_TICK_DURATION = 1 / IDLE_TICK_RATE
 local PROCESS_BUDGET_RATIO = 0.40
 
-local serialize = require("util.serialize")
-local handlers = { }
-addHandler = function(type_, cb)
-  if not handlers[type_] then
-    handlers[type_] = { cb }
-  else
-    table.insert(handlers[type_], cb)
-  end
-end
-
 POST = function(packetType, client, encodedData)
-  -- todo handle incoming
-  if packetType == enum.packetType.receive then
-    local decoded
-    if encodedData then
-      local success
-      success, decoded = pcall(serialize.decodedIndexed, encodedData:getString())
-      if not success then
-        print("WARN< Could not decode incoming data")
-        return
-      end
+  local decoded
+  if encodedData then
+    local success
+    success, decoded = pcall(serialize.decodeIndexed, encodedData:getString())
+    if not success then
+      print("WARN< Could not decode incoming data. Error:", decoded)
+      return
     end
+  end
+
+  if packetType == enum.packetType.receive then
     local type_ = decoded[1]
     if not type_ or type(handlers[type_]) ~= "table" then
       print("WARN< There were no handlers for received type: ".. tostring(type_))
@@ -83,7 +88,14 @@ POST = function(packetType, client, encodedData)
       callback(client, unpack(decoded, 2))
     end
   else
-    print("> PacketType not handled:", packetType)
+    local callbacks = handlers[packetType]
+    if type(callbacks) ~= "table" then
+      print("> PacketType not handled:", packetType)
+      return
+    end
+    for _, cb in ipairs(callbacks) do
+      cb(client, unpack(decoded, 1))
+    end
   end
 end
 
