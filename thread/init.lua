@@ -7,6 +7,17 @@ require("love.event")
 require("libs.mintmousse")
 require("util.logging")
 
+require("love.math")
+local uuidRNG = love.math.newRandomGenerator(os.time())
+local uuidTemplate = "xxxxx-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
+getUUID = function()
+  return uuidTemplate:gsub("[x]", function(_)
+    return ("%x"):format(uuidRNG:random(0, 0xf))
+  end)
+end
+
+local room = require("thread.room")
+
 -- MM
 love.mintmousse.updateSubscription("dashboard")
 local tab = love.mintmousse.newTab("Dashboard", "dashboard")
@@ -35,14 +46,45 @@ if not success then
   return
 end
 
-local ACTIVE_TICK_RATE = 20
-local IDLE_TICK_RATE = 5
+local ACTIVE_TICK_RATE = 30
+local IDLE_TICK_RATE = 10
 local ACTIVE_TICK_DURATION = 1 / ACTIVE_TICK_RATE
 local IDLE_TICK_DURATION = 1 / IDLE_TICK_RATE
 local PROCESS_BUDGET_RATIO = 0.40
 
+local serialize = require("util.serialize")
+local handlers = { }
+addHandler = function(type_, cb)
+  if not handlers[type_] then
+    handlers[type_] = { cb }
+  else
+    table.insert(handlers[type_], cb)
+  end
+end
+
 POST = function(packetType, client, encodedData)
-  -- todo handle incoming 
+  -- todo handle incoming
+  if packetType == enum.packetType.receive then
+    local decoded
+    if encodedData then
+      local success
+      success, decoded = pcall(serialize.decodedIndexed, encodedData:getString())
+      if not success then
+        print("WARN< Could not decode incoming data")
+        return
+      end
+    end
+    local type_ = decoded[1]
+    if not type_ or type(handlers[type_]) ~= "table" then
+      print("WARN< There were no handlers for received type: ".. tostring(type_))
+      return
+    end
+    for _, callback in ipairs(handlers[type_]) do
+      callback(client, unpack(decoded, 2))
+    end
+  else
+    print("> PacketType not handled:", packetType)
+  end
 end
 
 local channel = love.thread.getChannel("channel")

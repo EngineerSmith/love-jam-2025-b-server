@@ -75,6 +75,10 @@ server.process = function(budgetEndTime)
   end
 end
 
+server.sendTo = function(client, type_, ...)
+  channelOut:push({ client.sessionID, serialize.encode(type_, ...) })
+end
+
 server.processOutgoing = function()
   local command = channelOut:pop()
   while command do
@@ -159,7 +163,7 @@ server.getClient = function(sessionID, makeNew)
   if makeNew == nil then
     makeNew = true
   end
-  local client = server.clients[sessionID] or (makeNew and { } or nil)
+  local client = server.clients[sessionID] or (makeNew and { uuid = getUUID() } or nil)
   server.clients[sessionID] = client
   return client
 end

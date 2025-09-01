@@ -22,7 +22,7 @@ return {
   end,
 
   compressionFunction = "lz4", -- https://love2d.org/wiki/CompressedDataFormat
-  hashFunction = "sha512", -- https://love2d.org/wiki/HashFunction
-  uidLength = 64,
-  saltLength = 64,
+  -- hashFunction = "sha512", -- https://love2d.org/wiki/HashFunction
+  -- uidLength = 64,
+  -- saltLength = 64,
 }
