@@ -51,6 +51,7 @@ server.process = function(budgetEndTime)
       if client.loggedIn then
         POST(enum.packetType.receive, client, encoded)
       else
+        -- TODO receive uuid on login, and try to reroute them to their room
         local success = server.validLogin(client, encoded)
         if not success then
           server.removeClient(sessionID)
@@ -58,9 +59,9 @@ server.process = function(budgetEndTime)
           goto continue
         end
         POST(enum.packetType.login, client)
-        channelOut:push({ -- tell client it is accepted, and their uid if they're a new user
+        channelOut:push({ -- tell client it is accepted, and their uuid.
           sessionID,
-          serialize.encode(enum.packetType.login)
+          serialize.encode(enum.packetType.login, client.uuid)
         })
       end
     elseif event.type == "disconnect" then

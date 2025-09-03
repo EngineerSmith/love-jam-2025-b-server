@@ -127,7 +127,7 @@ while true do
   local budgetEndTime = start + tickDuration * PROCESS_BUDGET_RATIO
   server.process(budgetEndTime)
   -- game logic
-  -- todo
+  room.updateRooms()
   -- outgoing
   server.processOutgoing()
   -- ...

@@ -57,6 +57,10 @@ room.addPlayer = function(self, client)
   table.insert(self.players, {
     client = client,
     lastMessage = -1,
+    x = 0,
+    y = 0,
+    faceX = 0,
+    faceY = 1,
   })
   return true
 end
@@ -90,6 +94,10 @@ room.getInfo = function(self)
     table.insert(info.players, {
       username = player.client.username,
       uuid = player.client.uuid,
+      x = player.x,
+      y = player.y,
+      faceX = player.faceX,
+      faceY = player.faceY,
     })
   end
   return info
@@ -119,6 +127,24 @@ room.getRoomsInfo = function()
     table.insert(info, name..": "..#room.players.."/"..room.maxPlayers.." Players")
   end
   return table.concat(info, "\n\n")
+end
+
+room.updateRooms = function()
+  for _, room in ipairs(rooms) do
+    local roomPlayers = { }
+    for _, roomPlayer in ipairs(room.players) do
+      table.insert(roomPlayers, {
+        uuid = roomPlayer.client.uuid,
+        x = roomPlayer.x,
+        y = roomPlayer.y,
+        faceX = roomPlayer.faceX,
+        faceY = roomPlayer.faceY,
+      })
+    end
+    for _, player in ipairs(room.players) do
+      server.sendTo(player.client, "roomPlayers", roomPlayers)
+    end
+  end
 end
 
 local findClientRoom = function(client)
@@ -180,7 +206,6 @@ end)
 addHandler("chatMessage", function(client, message)
   local room, player = findClientRoom(client)
   if not room then
-    print("HIT EXIT ROOM")
     return
   end
 
@@ -195,6 +220,16 @@ addHandler("chatMessage", function(client, message)
   for _, p in ipairs(room.players) do
     server.sendTo(p.client, "chatMessage", formattedMessage, p.client == client and "you" or "other")
   end
+end)
+
+addHandler("playerInfo", function(client, x, y, faceX, faceY)
+  local room, player = findClientRoom(client)
+  if not room then
+    return
+  end
+
+  player.x, player.y = x, y
+  player.faceX, player.faceY = faceX, faceY
 end)
 
 addHandler("disconnect", function(client)
