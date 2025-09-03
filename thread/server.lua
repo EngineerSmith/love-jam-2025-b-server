@@ -30,7 +30,7 @@ end
 
 server.process = function(budgetEndTime)
   local event = server.host:service(20)
-  while event and ltr.getTime() < budgetEndTime do
+  while event do
     local sessionID = ld.hash("string", "sha256", tostring(event.peer))
     local client = server.getClient(sessionID)
     if not client.peer then
@@ -69,15 +69,20 @@ server.process = function(budgetEndTime)
         POST(enum.packetType.disconnect, client)
       end
     elseif event.type == "connect" then
-      client.sessionID = sessionID
-      client.loggedIn = false
+      -- todo ? Anything we need to do here, not really.
     end
     ::continue::
+    if ltr.getTime() >= budgetEndTime then
+      break
+    end
     event = server.host:check_events()
   end
 end
 
 server.sendTo = function(client, type_, ...)
+  if not client.sessionID then
+    error("Client doesn't have sess ID")
+  end
   channelOut:push({ client.sessionID, serialize.encode(type_, ...) })
 end
 
@@ -129,6 +134,16 @@ server.processOutgoing = function()
         target = command[3]
         data = command[4]
       end
+      if not target then
+        local n = 0
+        for k, v in pairs(command) do
+          n = n + 1
+          print(k, v)
+        end
+        love.logging.warning("Processed outgoing, had no target.", n)
+        goto continue
+      end
+
       -- compress
       local compressData
       if data and data ~= enum.packetType.disconnect then
@@ -208,7 +223,11 @@ server.getClient = function(sessionID, makeNew)
   if makeNew == nil then
     makeNew = true
   end
-  local client = server.clients[sessionID] or (makeNew and { uuid = getUUID() } or nil)
+  local client = server.clients[sessionID] or (makeNew and {
+    sessionID = sessionID,
+    uuid = getUUID(),
+    loggedIn = false,
+  } or nil)
   server.clients[sessionID] = client
   return client
 end

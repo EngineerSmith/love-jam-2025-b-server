@@ -1,4 +1,6 @@
-local room = { }
+local room = {
+  chatCooldown = -1 -- disabled
+}
 room.__index = room
 
 local server = require("thread.server")
@@ -54,6 +56,7 @@ room.addPlayer = function(self, client)
 
   table.insert(self.players, {
     client = client,
+    lastMessage = -1,
   })
   return true
 end
@@ -86,7 +89,7 @@ room.getInfo = function(self)
   for _, player in ipairs(self.players) do
     table.insert(info.players, {
       username = player.client.username,
-      uuid = player.client.uuid
+      uuid = player.client.uuid,
     })
   end
   return info
@@ -123,7 +126,7 @@ local findClientRoom = function(client)
     if #room.players > 0 then
       for _, player in ipairs(room.players) do
         if player.client.sessionID == client.sessionID then
-          return room
+          return room, player
         end
       end
     end
@@ -146,6 +149,7 @@ addHandler("createRoom", function(client)
   else
     table.insert(rooms, newRoom)
     server.sendTo(client, "createRoom", true, newRoom:getInfo())
+    server.sendTo(client, "chatMessage", client.username.." has joined.", "server")
   end
 end)
 
@@ -162,7 +166,9 @@ addHandler("joinRoom", function(client, roomKey)
     if room.state == "waiting" and room.key == roomKey then
       if room:addPlayer(client) then
         server.sendTo(client, "joinRoom", true, room:getInfo())
-        -- todo tell new player about who is in the room
+        for _, p in ipairs(room.players) do
+          server.sendTo(p.client, "chatMessage", client.username.." has joined.", "server")
+        end
       else
         server.sendTo(client, "joinRoom", false)
       end
@@ -171,21 +177,49 @@ addHandler("joinRoom", function(client, roomKey)
   end
 end)
 
+addHandler("chatMessage", function(client, message)
+  local room, player = findClientRoom(client)
+  if not room then
+    print("HIT EXIT ROOM")
+    return
+  end
+
+  -- if love.timer.getTime() < player.lastMessage + room.chatCooldown then
+  --   -- waiting cooldown
+  --   return
+  -- end
+  -- player.lastMessage = love.timer.getTime()
+
+  local formattedMessage = player.client.username..": "..message
+
+  for _, p in ipairs(room.players) do
+    server.sendTo(p.client, "chatMessage", formattedMessage, p.client == client and "you" or "other")
+  end
+end)
+
 addHandler("disconnect", function(client)
+  if not client.loggedIn then
+    return
+  end
+
   local room = findClientRoom(client)
   if room then
     if not room:removePlayer(client) then
       print("WARNING: Tried to remove player from room, but was unable to.")
-    else
-      if #room.players == 0 then
-        for index, r in ipairs(rooms) do
-          if r == room then
-            love.logging.info("Room: Removed room:", room.uuid)
-            room:remove()
-            table.remove(rooms, index)
-            break
-          end
+      return
+    end
+    if #room.players == 0 then
+      for index, r in ipairs(rooms) do
+        if r == room then
+          love.logging.info("Room: Removed room:", room.uuid)
+          room:remove()
+          table.remove(rooms, index)
+          break
         end
+      end
+    else
+      for _, p in ipairs(room.players) do
+        server.sendTo(p.client, "chatMessage", client.username.." has left.", "server")
       end
     end
   end
