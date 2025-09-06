@@ -5,6 +5,8 @@ room.__index = room
 
 local server = require("thread.server")
 
+local projectileManager = require("thread.projectileManager")
+
 local keys = { }
 local getNewKey = function()
   for attempt = 1, 10 do
@@ -36,10 +38,16 @@ room.new = function(owner)
     players = { },
     maxPlayers = 4,
     uuid = getUUID(),
+    projectileManager = projectileManager.new(),
   }, room)
   love.logging.info("Room: Created new room:", self.uuid)
   if not self:addPlayer(owner) then
     error("You messed up, this should never fail")
+  end
+  self.projectileManager.sendAll = function(type_, ...)
+    for _, player in ipairs(self.players) do
+      server.sendTo(player.client, type_, ...)
+    end
   end
   return self
 end
@@ -61,6 +69,8 @@ room.addPlayer = function(self, client)
     y = 0,
     faceX = 0,
     faceY = 1,
+    cooldown = 1,
+    projectileCooldown = -1,
   })
   return true
 end
@@ -129,7 +139,7 @@ room.getRoomsInfo = function()
   return table.concat(info, "\n\n")
 end
 
-room.updateRooms = function()
+room.updateRooms = function(dt)
   for _, room in ipairs(rooms) do
     local roomPlayers = { }
     for _, roomPlayer in ipairs(room.players) do
@@ -144,6 +154,7 @@ room.updateRooms = function()
     for _, player in ipairs(room.players) do
       server.sendTo(player.client, "roomPlayers", roomPlayers)
     end
+    room.projectileManager:update(dt)
   end
 end
 
@@ -230,6 +241,25 @@ addHandler("playerInfo", function(client, x, y, faceX, faceY)
 
   player.x, player.y = x, y
   player.faceX, player.faceY = faceX, faceY
+end)
+
+addHandler("projectileCreate", function(client, type_, localUUID, ...)
+  print("hit")
+  local room, player = findClientRoom(client)
+  if not room then
+    return
+  end
+
+  if type_ ~= "player" or player.projectileCooldown >= love.timer.getTime() then
+    -- invalid
+    print(" -> invalid")
+    server.sendTo(client, "projectileRejected", localUUID)
+    return
+  end
+  player.projectileCooldown = love.timer.getTime() + player.cooldown
+
+  room.projectileManager:createProjectile(client.uuid, type_, localUUID, ...)
+  print(" -> created")
 end)
 
 addHandler("disconnect", function(client)

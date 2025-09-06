@@ -67,7 +67,7 @@ local ACTIVE_TICK_RATE = 30
 local IDLE_TICK_RATE = 10
 local ACTIVE_TICK_DURATION = 1 / ACTIVE_TICK_RATE
 local IDLE_TICK_DURATION = 1 / IDLE_TICK_RATE
-local PROCESS_BUDGET_RATIO = 0.40
+local PROCESS_BUDGET_RATIO = 0.60
 
 POST = function(packetType, client, encodedData)
   local decoded
@@ -127,7 +127,7 @@ while true do
   local budgetEndTime = start + tickDuration * PROCESS_BUDGET_RATIO
   server.process(budgetEndTime)
   -- game logic
-  room.updateRooms()
+  room.updateRooms(tickDuration)
   -- outgoing
   server.processOutgoing()
   -- ...

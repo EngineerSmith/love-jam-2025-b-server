@@ -63,6 +63,10 @@ server.process = function(budgetEndTime)
           sessionID,
           serialize.encode(enum.packetType.login, client.uuid)
         })
+        channelOut:push({
+          sessionID,
+          serialize.encode("timeSync", os.time())
+        })
       end
     elseif event.type == "disconnect" then
       server.removeClient(sessionID)
@@ -71,6 +75,10 @@ server.process = function(budgetEndTime)
       end
     elseif event.type == "connect" then
       -- todo ? Anything we need to do here, not really.
+      channelOut:push({
+          sessionID,
+          serialize.encode("timeSync", os.time())
+        })
     end
     ::continue::
     if ltr.getTime() >= budgetEndTime then
@@ -87,7 +95,19 @@ server.sendTo = function(client, type_, ...)
   channelOut:push({ client.sessionID, serialize.encode(type_, ...) })
 end
 
+server.sendToAll = function(type_, ...)
+  channelOut:push({ "all", serialize.encode(type_, ...) })
+end
+
+local lastTimeSync = -1
 server.processOutgoing = function()
+  -- time sync
+  local currentTime = os.time()
+  if currentTime - lastTimeSync >= 3 then
+    lastTimeSync = currentTime
+    server.sendToAll("timeSync", currentTime)
+  end
+  --
   local tempQueue = { }
   local command = channelOut:pop()
   while command do
@@ -162,8 +182,8 @@ server.processOutgoing = function()
       end
       -- send to target
       if target == "all" then
-        for _, client in pairs(clients) do
-          if client.loggedIn then
+        for _, client in pairs(server.clients) do
+          if client.loggedIn and client.peer:state() == "connected" then
             client.peer:send(compressData:getPointer(), compressData:getSize(), channel, flags)
           end
         end
